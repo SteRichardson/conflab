@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=windows-1252">
+    <script src="js/RTCMultiConnection.js"></script>
+    <script src="js/socket.io.js"></script>
+
+    <style>
+    canvas { border:1px solid #000; margin:10px; }
+    #roomList button { margin-right: 5px }
+    </style>
+</head>
+<body>
+
+<label for="name">Name:</label> <input type="text" id="name">
+<span id="roomList"></span>
+<br />
+<canvas id="canvas" width="750" height="550"></canvas>
+
+<script>
+    // API Docs: https://github.com/muaz-khan/RTCMultiConnection/blob/master/docs/api.md
+    
+    const canvasWidth = 750;
+    const canvasHeight = 650;
+    const predefinedRoomId = '<YOUR ROOM ID>';   
+    
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+    canvas.width = canvasWidth;
+    canvas.height = canvasHeight;
+   
+    const officeConnection = new RTCMultiConnection();
+    const chatConnection = new RTCMultiConnection();
+            
+    const employee = {
+        name: document.getElementById('name').value || null,
+        prevX: null,
+        prevY: null,
+        x: canvasWidth / 2,
+        y: canvasHeight / 2,
+        velY: 0,
+        velX: 0,
+        speed: 4,
+        friction: 0.8,
+        proximityRoomId: -1,
+        joinedRoomId: -1
+    };     
+    
+    const inputKeys = [];
+    const peersIdList = [];
+    const peers = {};
+    
+    const fpsInterval = 20;
+    let now = Date.now();
+    let elapsed = 0;
+    let then = Date.now();
+    let hasLostFocus = false;
+	
+	const columns = {
+		a: { start: 0, end: 150 },
+		b: { start: 200, end: 350 },
+		c: { start: 400, end: 550 },
+		d: { start: 600, end: 750 },
+	};
+	
+	const rows = {
+		a: { start: 0, end: 125 },
+		b: { start: 175, end: 300 },
+		c: { start: 350, end: 475 },
+		d: { start: 525, end: 650 },
+	};
+    
+	let roomIdCounter = 0;
+    const rooms = [
+        { 
+            id: roomIdCounter++, 
+            name: "Squad A", 
+            topLeft: { 
+				x: columns["a"].start, 
+				y: rows["a"].start
+			},
+            bottomRight: { 
+				x: columns["a"].end, 
+				y: rows["a"].end
+			}
+        },
+        { 
+            id: roomIdCounter++, 
+            name: "Squad B", 
+            topLeft: { 
+				x: columns["b"].start, 
+				y: rows["a"].start
+			},
+            bottomRight: { 
+				x: columns["b"].end, 
+				y: rows["a"].end
+			}
+        },
+        { 
+            id: roomIdCounter++, 
+            name: "Squad C", 
+            topLeft: { 
+				x: columns["c"].start, 
+				y: rows["a"].start
+			},
+            bottomRight: { 
+				x: columns["c"].end, 
+				y: rows["a"].end
+			}
+        },
+        { 
+            id: roomIdCounter++, 
+            name: "Squad D", 
+            topLeft: { 
+				x: columns["d"].start, 
+				y: rows["a"].start
+			},
+            bottomRight: { 
+				x: columns["d"].end, 
+				y: rows["a"].end
+			}
+        },        
+        { 
+            id: roomIdCounter++,  
+            name: "Platform", 
+            topLeft: { 
+				x: columns["a"].start, 
+				y: rows["b"].start
+			},
+            bottomRight: { 
+				x: columns["a"].end, 
+				y: rows["b"].end
+			}
+        },
+        { 
+            id: roomIdCounter++, 
+            name: "BAs", 
+            topLeft: { 
+				x: columns["b"].start, 
+				y: rows["b"].start
+			},
+            bottomRight: { 
+				x: columns["b"].end, 
+				y: rows["b"].end
+			}
+        },
+        { 
+            id: roomIdCounter++,  
+            name: "UX", 
+            topLeft: { 
+				x: columns["c"].start, 
+				y: rows["b"].start
+			},
+            bottomRight: { 
+				x: columns["c"].end, 
+				y: rows["b"].end
+			}
+        },
+        { 
+            id: roomIdCounter++,  
+            name: "MR1", 
+            topLeft: { 
+				x: columns["d"].start, 
+				y: rows["b"].start
+			},
+            bottomRight: { 
+				x: columns["d"].end, 
+				y: rows["b"].end
+			}
+        },
+        { 
+            id: roomIdCounter++,  
+            name: "MR2", 
+            topLeft: { 
+				x: columns["a"].start, 
+				y: rows["c"].start
+			},
+            bottomRight: { 
+				x: columns["a"].end, 
+				y: rows["c"].end
+			}
+        },
+        { 
+            id: roomIdCounter++,  
+            name: "Sales", 
+            topLeft: { 
+				x: columns["b"].start, 
+				y: rows["c"].start
+			},
+            bottomRight: { 
+				x: columns["b"].end, 
+				y: rows["c"].end
+			}
+        },
+        { 
+            id: roomIdCounter++,  
+            name: "Marketing", 
+            topLeft: { 
+				x: columns["c"].start, 
+				y: rows["c"].start
+			},
+            bottomRight: { 
+				x: columns["c"].end, 
+				y: rows["c"].end
+			}
+        },
+        { 
+            id: roomIdCounter++,  
+            name: "Games Room", 
+            topLeft: { 
+				x: columns["d"].start, 
+				y: rows["c"].start
+			},
+            bottomRight: { 
+				x: columns["d"].end, 
+				y: rows["c"].end
+			}
+        },
+        { 
+            id: roomIdCounter++,  
+            name: "General Chat", 
+            topLeft: { 
+				x: columns["a"].start, 
+				y: rows["d"].start
+			},
+            bottomRight: { 
+				x: columns["d"].end, 
+				y: rows["d"].end
+			}
+        }
+    ];
+        
+    function leaveCurrentRoom() {
+        const leaveButton = document.getElementById("leave-room-button");
+        if (leaveButton) {
+            leaveButton.parentNode.removeChild(leaveButton);
+        }
+            
+        chatConnection.getAllParticipants().forEach(function(participant) {
+             chatConnection.disconnectWith( participant );
+        });
+            
+        employee.proximityRoomId = -1;
+        employee.joinedRoomId = -1;
+    }   
+    
+    function setupLeaveRoomButton() {
+        const leaveRoomButton = document.createElement("button");
+        leaveRoomButton.setAttribute("id", "leave-room-button");
+        leaveRoomButton.innerHTML = "Leave " + rooms[employee.joinedRoomId].name; 
+        leaveRoomButton.onclick = function(e) {
+            leaveCurrentRoom();
+        };
+        
+        document.getElementById("roomList").appendChild(leaveRoomButton);
+    }
+    
+    function setupRoomButton(roomId) {
+        const oldJoinButton = document.getElementById("join-room-button");
+        const joinButton = document.createElement("button");
+        joinButton.setAttribute("id", "join-room-button");
+        joinButton.setAttribute("data-roomId", roomId);
+        joinButton.innerHTML = "Join " + rooms[roomId].name;  
+        
+        joinButton.onclick = function(e) {   
+            leaveCurrentRoom();
+                        
+            employee.joinedRoomId = this.getAttribute("data-roomId");            
+            chatConnection.openOrJoin(predefinedRoomId + "_" + employee.joinedRoomId);
+            
+            setupLeaveRoomButton();
+            this.parentNode.removeChild(this);
+        };
+        
+        const roomList = document.getElementById("roomList");
+        
+        if (oldJoinButton) {
+            roomList.replaceChild(joinButton, oldJoinButton);
+        } else {
+            roomList.appendChild(joinButton);
+        }
+    }
+        
+    function checkCanJoinRoom() {
+        let isInARoom = false;
+        rooms.forEach(function(room) {
+			if (isInARoom) return;
+			
+            if (employee.x >= room.topLeft.x &&
+                employee.x < room.bottomRight.x &&  
+                employee.y >= room.topLeft.y &&
+                employee.y < room.bottomRight.y) {
+                
+                isInARoom = true;
+                if (employee.proximityRoomId != room.id && employee.joinedRoomId != room.id) {
+                    employee.proximityRoomId = room.id;
+                    setupRoomButton(employee.proximityRoomId);
+                }                
+            }
+        }); 
+        
+        if (!isInARoom) {   
+            employee.proximityRoomId = -1;
+            const joinButton = document.getElementById("join-room-button");
+            if (joinButton) {
+                joinButton.parentNode.removeChild(joinButton);
+            }
+        }
+    }
+	
+	function clearCanvas() {
+		ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+	}
+
+    function drawRooms() {       
+        const getPastelColour = function(inputStr) {
+            const baseRed = 128;
+            const baseGreen = 128;
+            const baseBlue = 128;
+            
+            let seed = inputStr.charCodeAt(0); 
+            for (let i = 1; i < inputStr.split('').length; i++) {
+                seed = seed ^ inputStr.charCodeAt(i);
+            }
+                
+            const rand_1 = Math.abs((Math.sin(seed++) * 10000)) % 256;
+            const rand_2 = Math.abs((Math.sin(seed++) * 10000)) % 256;
+            const rand_3 = Math.abs((Math.sin(seed++) * 10000)) % 256;
+
+            const red = Math.round((rand_1 + baseRed) / 2);
+            const green = Math.round((rand_2 + baseGreen) / 2);
+            const blue = Math.round((rand_3 + baseBlue) / 2);
+
+            return "rgb(" + red + ", " + green + ", " + blue + ")";
+        };
+        
+        rooms.forEach(function(room) {
+            ctx.fillStyle = getPastelColour(room.name);
+            ctx.fillRect(
+                room.topLeft.x,
+                room.topLeft.y, 
+                room.bottomRight.x - room.topLeft.x, 
+                room.bottomRight.y - room.topLeft.y
+            );
+            
+            ctx.fillStyle = "black";
+            ctx.font = "16px Arial";
+            ctx.fillText(
+                room.name, 
+                room.topLeft.x + 10, 
+                room.topLeft.y + 25
+            );
+        });
+    }
+    
+    function drawEmployee() {
+        ctx.beginPath();
+        ctx.arc(employee.x, employee.y, 5, 0, Math.PI * 2);
+        ctx.fillStyle = "red";
+        ctx.fill();
+        
+        ctx.fillStyle = "black";
+    }
+    
+    function drawPeers() {
+        let peerIndex = 0;
+        for (peerIndex = 0; peerIndex < peersIdList.length; peerIndex++) { 
+            const peerId = peersIdList[peerIndex];
+            const peer = peers[peerId];
+            ctx.beginPath();
+            ctx.arc(peer.x, peer.y, 5, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.font = "12px Arial";
+            ctx.fillText(peer.name || peerId, peer.x - 30, peer.y - 15);
+        }  
+    }
+    
+    function stopMovementOnLostFocus() {
+        if (!document.hasFocus()) {
+            if (!hasLostFocus) {
+                inputKeys[37] = inputKeys[38] = inputKeys[39] = inputKeys[40] = false;
+                hasLostFocus = true;
+            }
+        } else {
+            hasLostFocus = false;
+        }
+    }
+    
+    function updateSelfPosition() {
+        if (inputKeys[38]) {
+            if (employee.velY > -employee.speed) {
+                employee.velY--;
+            }
+        }
+        
+        if (inputKeys[40]) {
+            if (employee.velY < employee.speed) {
+                employee.velY++;
+            }
+        } 
+        
+        if (inputKeys[39]) {
+            if (employee.velX < employee.speed) {
+                employee.velX++;
+            }
+        }
+
+        if (inputKeys[37]) {
+            if (employee.velX > -employee.speed) {
+                employee.velX--;
+            }
+        }
+
+        employee.velY *= employee.friction;
+        employee.velX *= employee.friction;
+        
+        employee.y += employee.velY;
+        employee.x += employee.velX;
+        
+        employee.x = Math.round(employee.x);
+        employee.y = Math.round(employee.y);
+
+        if (employee.x >= canvasWidth-5) {
+            employee.x = canvasWidth-5;
+        } else if (employee.x <= 5) {
+            employee.x = 5;
+        }
+
+        if (employee.y > canvasHeight-5) {
+            employee.y = canvasHeight-5;
+        } else if (employee.y <= 5) {
+            employee.y = 5;
+        }
+    }
+	
+	function isWithinRefreshInterval() {
+		now = Date.now();
+		elapsed = now - then;
+		if (elapsed > fpsInterval) {
+			then = now - (elapsed % fpsInterval);
+			return true;
+		}
+		return false;	
+	}
+    
+    function broadcastSelfPosition() {
+		if (!isWithinRefreshInterval()) return;                
+		if (employee.prevX == employee.x && employee.prevY == employee.y) return;
+		
+		officeConnection.send({ 
+			x: employee.x, 
+			y: employee.y, 
+			name: employee.name,
+			timestamp: new Date()
+		});
+		
+		employee.prevX = employee.x;
+		employee.prevY = employee.y;
+    }
+        
+    function update() {
+        requestAnimationFrame(update);
+                
+        stopMovementOnLostFocus();
+        updateSelfPosition();        
+        checkCanJoinRoom();
+
+		clearCanvas();
+        drawRooms();
+        drawEmployee();                
+        drawPeers(); 
+        broadcastSelfPosition();
+    }
+
+	function setupKeypressEventListeners() {
+		document.body.addEventListener("keydown", function (e) {
+			inputKeys[e.keyCode] = true;
+		});
+		
+		document.body.addEventListener("keyup", function (e) {
+			inputKeys[e.keyCode] = false;
+		});    
+	}
+	setupKeypressEventListeners();
+
+	function setupInputListeners() {
+		document.getElementById('name').onchange = function(event) {
+			employee.name = this.value;
+		};
+	}
+	setupInputListeners();
+
+	function setupOfficeConnection() {
+		// purely for positioning
+		officeConnection.socketURL = 'https://rtcmulticonnection.herokuapp.com:443/';
+		officeConnection.session = { data: true };
+		officeConnection.mediaConstraints = { 
+			audio: false, 
+			video: false 
+		};	
+		officeConnection.sdpConstraints.mandatory = { 
+			OfferToReceiveAudio: false,
+			OfferToReceiveVideo: false 
+		};
+		
+		officeConnection.onstream = function(event) {
+		   //document.body.appendChild( event.mediaElement );
+		};
+		
+		officeConnection.onmessage = function(event) {
+			const senderId = event.userid;
+			const messageData = event.data;
+			
+			// const senderName = messageData.name || senderId;
+			// const senderFullName = event.extra.fullName;
+			
+			if (!peersIdList.includes(senderId)) {
+				peersIdList.push(senderId);
+			}
+			
+			messageData.chatButtonNameSet = (peers[senderId] || {}).chatButtonNameSet;
+			
+			// throw away old packages due to possible race conditions
+			if (peers[senderId] && peers[senderId].timestamp > messageData.timestamp) return;
+			
+			peers[senderId] = messageData;
+		};
+		
+		officeConnection.multiPeersHandler.onPeerStateChanged = function(state) {
+			if (state.iceConnectionState.search(/disconnected|closed|failed/gi) > -1) {
+				const peerId = state.userid;
+				const peerIndex = peersIdList.indexOf(peerId);
+				if (peerIndex > -1) {
+					peersIdList.splice(peerIndex, 1);
+				}
+				delete peers[peerId];
+			}
+		};
+			
+		officeConnection.openOrJoin(predefinedRoomId);
+		update();
+	}
+		
+    function setupChatConnection() {
+		// audio/video calling
+		chatConnection.socketURL = 'https://rtcmulticonnection.herokuapp.com:443/';  
+		//chatConnection.session = 'many-to-many';  
+		chatConnection.session = { 
+			audio: true, // audio: 'two-way'
+			video: false 
+		};
+		chatConnection.mediaConstraints = { 
+			audio: true, 
+			video: false 
+		};
+		chatConnection.sdpConstraints.mandatory = { 
+			OfferToReceiveAudio: true,
+			OfferToReceiveVideo: false 
+		};		    
+		chatConnection.onstream = function(event) {
+		   //document.body.appendChild( event.mediaElement );
+		};
+	}
+	
+	setupOfficeConnection();
+	setupChatConnection();
+</script>
+
+</body>
+</html>
